@@ -1,0 +1,147 @@
+package tcpclient
+
+import (
+	"errors"
+	"fmt"
+	"github.com/JimmyTsai16/tcpclient/errorcode"
+	logging "github.com/z9905080/gloger"
+	"net"
+	"strings"
+	"time"
+)
+
+type ConnState int
+
+const (
+	Default ConnState = iota
+	Open
+	Close
+)
+
+type ReadFunc func([]byte, int)
+type ConnStateFunc func(ConnState)
+type ErrorFunc func(errorcode.ErrorCode, error)
+
+type Client struct {
+	addr       string
+	conn       net.Conn
+	ReadBuffer int64
+
+	ReadHandler      ReadFunc
+	ConnStateHandler ConnStateFunc
+	ErrorHandler     ErrorFunc
+
+	ReconnectDuration time.Duration
+	quit              chan struct{}
+	autoReconnectSW   bool
+	connectClosed     bool
+	autoConnect       bool
+}
+
+func New() *Client {
+	return &Client{
+		addr:              "",
+		conn:              nil,
+		ReadBuffer:        1024,
+		quit:              make(chan struct{}),
+		ReadHandler:       func([]byte, int) {},
+		ConnStateHandler:  func(ConnState) {},
+		ErrorHandler:      func(errorcode.ErrorCode, error) {},
+		ReconnectDuration: time.Second * 2,
+		connectClosed:     true,
+		autoConnect:       false,
+	}
+}
+
+func (c *Client) Connect(addr string, autoConnect bool) error {
+	c.addr = addr
+	c.autoConnect = autoConnect
+
+	connErr := c.connect()
+	if connErr != nil {
+		if c.autoConnect {
+			go c.reconnect()
+		}
+		return connErr
+	}
+	return nil
+}
+
+func (c *Client) connect() error {
+	conn, err := net.Dial("tcp", c.addr)
+	if err != nil {
+		return err
+	}
+	c.conn = conn
+
+	err = c.conn.SetDeadline(time.Time{})
+	if err != nil {
+		return err
+	}
+
+	c.connectClosed = false
+	c.ConnStateHandler(Open)
+	go c.readHandler()
+	return nil
+}
+
+func (c *Client) reconnect() {
+	t := time.NewTicker(c.ReconnectDuration)
+	reconnectTimes := 0
+	for {
+		<-t.C
+		reconnectTimes++
+		logging.Info("reconnecting")
+		if connErr := c.connect(); connErr == nil {
+			logging.Info(fmt.Sprintf("reconnect successful, times: %d", reconnectTimes))
+			return
+		}
+		logging.Error(fmt.Sprintf("reconnect fail, times: %d", reconnectTimes))
+	}
+}
+
+// write bytes, error return -1 or return how many byte write
+func (c *Client) WriteByte(b []byte) (int, error) {
+	if c.connectClosed {
+		return 0, fmt.Errorf("connection is closed")
+	}
+	return c.conn.Write(b)
+}
+
+func (c *Client) readHandler() {
+	var b = make([]byte, c.ReadBuffer)
+	for {
+		n, err := c.conn.Read(b)
+		if err != nil {
+			// default error
+			errorCode := errorcode.ConnectionUnknownError
+			if strings.Contains(err.Error(), "closed") {
+				errorCode = errorcode.ConnectionClosed
+			} else if strings.Contains(err.Error(), "unreachable") {
+				errorCode = errorcode.ConnectionClosed
+			}
+			c.connectClosed = true
+
+			//go c.ReadHandler(nil, -1)
+			go c.ConnStateHandler(Close)
+			go c.ErrorHandler(errorCode, errors.New(fmt.Sprint("Read error: ", err)))
+
+			go c.reconnect()
+			return
+		}
+		c.ReadHandler(b, n)
+	}
+}
+
+func (c *Client) SetAutoReconnect(onOff bool) {
+	c.autoReconnectSW = onOff
+}
+
+func (c *Client) IsClosed() bool {
+	return c.connectClosed
+}
+
+func (c *Client) Close() error {
+	err := c.conn.Close()
+	return err
+}
