@@ -32,10 +32,9 @@ type Client struct {
 	ErrorHandler     ErrorFunc
 
 	ReconnectDuration time.Duration
-	quit              chan struct{}
-	autoReconnectSW   bool
+	reconnectWaitChan chan struct{}
 	connectClosed     bool
-	autoConnect       bool
+	isAutoConnect     bool
 }
 
 func New() *Client {
@@ -43,23 +42,24 @@ func New() *Client {
 		addr:              "",
 		conn:              nil,
 		ReadBuffer:        1024,
-		quit:              make(chan struct{}),
 		ReadHandler:       func([]byte, int) {},
 		ConnStateHandler:  func(ConnState) {},
 		ErrorHandler:      func(errorcode.ErrorCode, error) {},
 		ReconnectDuration: time.Second * 2,
+
+		reconnectWaitChan: make(chan struct{}),
 		connectClosed:     true,
-		autoConnect:       false,
+		isAutoConnect:     false,
 	}
 }
 
-func (c *Client) Connect(addr string, autoConnect bool) error {
+func (c *Client) Connect(addr string, isAutoConnect bool) error {
 	c.addr = addr
-	c.autoConnect = autoConnect
+	c.isAutoConnect = isAutoConnect
 
 	connErr := c.connect()
 	if connErr != nil {
-		if c.autoConnect {
+		if c.isAutoConnect {
 			go c.reconnect()
 		}
 		return connErr
@@ -133,8 +133,18 @@ func (c *Client) readHandler() {
 	}
 }
 
+func (c *Client) WaitReconnectWithTimeout(timeout time.Duration) error {
+	t := time.NewTimer(timeout)
+	select {
+	case <-t.C:
+		return errors.New("wait connect timeout")
+	case <-c.reconnectWaitChan:
+		return nil
+	}
+}
+
 func (c *Client) SetAutoReconnect(onOff bool) {
-	c.autoReconnectSW = onOff
+	c.isAutoConnect = onOff
 }
 
 func (c *Client) IsClosed() bool {
