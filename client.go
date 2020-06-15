@@ -40,7 +40,7 @@ func New() *Client {
 	return &Client{
 		addr:              "",
 		conn:              nil,
-		ReadBuffer:        1024,
+		ReadBuffer:        128,
 		ReadHandler:       func([]byte, int) {},
 		ConnStateHandler:  func(ConnState) {},
 		ErrorHandler:      func(errorcode.ErrorCode, error) {},
@@ -107,8 +107,8 @@ func (c *Client) WriteByte(b []byte) (int, error) {
 }
 
 func (c *Client) readHandler() {
-	var b = make([]byte, c.ReadBuffer)
 	for {
+		var b = make([]byte, c.ReadBuffer)
 		n, err := c.conn.Read(b)
 		if err != nil {
 			// default error
