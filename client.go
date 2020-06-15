@@ -32,7 +32,6 @@ type Client struct {
 	ErrorHandler     ErrorFunc
 
 	ReconnectDuration time.Duration
-	reconnectWaitChan chan struct{}
 	connectClosed     bool
 	isAutoConnect     bool
 }
@@ -47,9 +46,8 @@ func New() *Client {
 		ErrorHandler:      func(errorcode.ErrorCode, error) {},
 		ReconnectDuration: time.Second * 2,
 
-		reconnectWaitChan: make(chan struct{}),
-		connectClosed:     true,
-		isAutoConnect:     false,
+		connectClosed: true,
+		isAutoConnect: false,
 	}
 }
 
@@ -130,16 +128,6 @@ func (c *Client) readHandler() {
 			return
 		}
 		c.ReadHandler(b, n)
-	}
-}
-
-func (c *Client) WaitReconnectWithTimeout(timeout time.Duration) error {
-	t := time.NewTimer(timeout)
-	select {
-	case <-t.C:
-		return errors.New("wait connect timeout")
-	case <-c.reconnectWaitChan:
-		return nil
 	}
 }
 
