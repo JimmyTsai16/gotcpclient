@@ -32,6 +32,7 @@ type Client struct {
 	ErrorHandler     ErrorFunc
 
 	ReconnectDuration time.Duration
+	reconnectTimes    int
 	connectClosed     bool
 	isAutoConnect     bool
 }
@@ -45,6 +46,7 @@ func New() *Client {
 		ConnStateHandler:  func(ConnState) {},
 		ErrorHandler:      func(errorcode.ErrorCode, error) {},
 		ReconnectDuration: time.Second * 2,
+		reconnectTimes:    0,
 
 		connectClosed: true,
 		isAutoConnect: false,
@@ -85,16 +87,16 @@ func (c *Client) connect() error {
 
 func (c *Client) reconnect() {
 	t := time.NewTicker(c.ReconnectDuration)
-	reconnectTimes := 0
+	c.reconnectTimes = 0
 	for {
 		<-t.C
-		reconnectTimes++
+		c.reconnectTimes++
 		logging.Info("reconnecting")
 		if connErr := c.connect(); connErr == nil {
-			logging.Info(fmt.Sprintf("reconnect successful, times: %d", reconnectTimes))
+			logging.Info(fmt.Sprintf("reconnect successful, times: %d", c.reconnectTimes))
 			return
 		}
-		logging.Error(fmt.Sprintf("reconnect fail, times: %d", reconnectTimes))
+		logging.Error(fmt.Sprintf("reconnect fail, times: %d", c.reconnectTimes))
 	}
 }
 
@@ -129,6 +131,10 @@ func (c *Client) readHandler() {
 		}
 		c.ReadHandler(b, n)
 	}
+}
+
+func (c *Client) GetReconnectTimes() int {
+	return c.reconnectTimes
 }
 
 func (c *Client) SetAutoReconnect(onOff bool) {
