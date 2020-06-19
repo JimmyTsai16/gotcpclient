@@ -86,10 +86,8 @@ func (c *Client) connect() error {
 }
 
 func (c *Client) reconnect() {
-	t := time.NewTicker(c.ReconnectDuration)
 	c.reconnectTimes = 0
 	for {
-		<-t.C
 		c.reconnectTimes++
 		logging.Info("reconnecting")
 		if connErr := c.connect(); connErr == nil {
@@ -97,6 +95,7 @@ func (c *Client) reconnect() {
 			return
 		}
 		logging.Error(fmt.Sprintf("reconnect fail, times: %d", c.reconnectTimes))
+		time.Sleep(c.ReconnectDuration)
 	}
 }
 
