@@ -122,6 +122,11 @@ func (c *Client) readHandler() {
 			}
 			c.connectClosed = true
 
+			closeErr := c.Close()
+			if closeErr != nil {
+				logging.Error("close connection error: closeErr:", closeErr)
+			}
+
 			//go c.ReadHandler(nil, -1)
 			go c.ConnStateHandler(Close)
 			go c.ErrorHandler(errorCode, errors.New(fmt.Sprint("Read error: ", err)))
