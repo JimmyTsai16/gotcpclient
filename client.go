@@ -112,6 +112,12 @@ func (c *Client) readHandler() {
 		var b = make([]byte, c.ReadBuffer)
 		n, err := c.conn.Read(b)
 		if err != nil {
+			if c.IsClosed() {
+				logging.Error("connection have been closed")
+				return
+			}
+			logging.Error("connection read error:", err)
+
 			// default error
 			errorCode := errorcode.ConnectionUnknownError
 			if strings.Contains(err.Error(), "closed") {
